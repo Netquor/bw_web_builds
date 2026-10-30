@@ -18,3 +18,6 @@ web-vault
 *.tar.gz.asc
 *.tar.gz.text
 sha256sums.txt
+
+# Netquor local build output and private Node (scripts/netquor_local_build.sh)
+.netquor-local/

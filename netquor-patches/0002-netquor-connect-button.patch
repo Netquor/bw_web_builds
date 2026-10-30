@@ -1,0 +1,102 @@
+diff --git a/libs/tools/generator/components/src/forwarder-settings.component.html b/libs/tools/generator/components/src/forwarder-settings.component.html
+index 0d21317..4423916 100644
+--- a/libs/tools/generator/components/src/forwarder-settings.component.html
++++ b/libs/tools/generator/components/src/forwarder-settings.component.html
+@@ -25,6 +25,15 @@
+       ></button>
+     </bit-form-field>
+   }
++  @if (displayToken && isNetquorAliases) {
++    <!-- Netquor: fetch the person's own key from our addy.io (pop-up behind single sign-on), see netquor-patches/0002 -->
++    <div class="tw-mb-4 tw-flex tw-items-center tw-gap-3">
++      <button type="button" bitButton buttonType="secondary" (click)="connectNetquorAliases()">
++        Get my key from Netquor Aliases
++      </button>
++      <span class="tw-text-sm">{{ netquorConnectStatus }}</span>
++    </div>
++  }
+   @if (displayBaseUrl) {
+     <bit-form-field disableMargin>
+       <bit-label>{{ "selfHostBaseUrl" | i18n }}</bit-label>
+diff --git a/libs/tools/generator/components/src/forwarder-settings.component.ts b/libs/tools/generator/components/src/forwarder-settings.component.ts
+index 0f1c863..9f57b2c 100644
+--- a/libs/tools/generator/components/src/forwarder-settings.component.ts
++++ b/libs/tools/generator/components/src/forwarder-settings.component.ts
+@@ -15,6 +15,7 @@ import { JslibModule } from "@bitwarden/angular/jslib.module";
+ import { Account } from "@bitwarden/common/auth/abstractions/account.service";
+ import { VendorId } from "@bitwarden/common/tools/extension";
+ import {
++  ButtonModule,
+   FormFieldModule,
+   AriaDisableDirective,
+   TooltipDirective,
+@@ -41,6 +42,7 @@ const Controls = Object.freeze({
+   templateUrl: "forwarder-settings.component.html",
+   imports: [
+     ReactiveFormsModule,
++    ButtonModule,
+     FormFieldModule,
+     AriaDisableDirective,
+     TooltipDirective,
+@@ -164,6 +166,61 @@ export class ForwarderSettingsComponent implements OnInit, OnChanges, OnDestroy
+     }
+   }
+ 
++  /** Netquor: our own addy.io. When it is the chosen server a button fetches the person's own API key from it. */
++  private static readonly netquorBase = "https://alias.netquor.com";
++  protected netquorConnectStatus = "";
++
++  protected get isNetquorAliases(): boolean {
++    const url = String(this.settings.get(Controls.baseUrl)?.value ?? "");
++    return url.replace(/\/+$/, "") === ForwarderSettingsComponent.netquorBase;
++  }
++
++  /** Opens our connect page in a pop-up (the person is already signed in through Authentik), and takes the key it hands back.
++   *  Only a message from that exact origin AND from that very pop-up is accepted. */
++  protected connectNetquorAliases() {
++    const base = ForwarderSettingsComponent.netquorBase;
++    const popup = window.open(
++      `${base}/netquor/connect?return=${encodeURIComponent(window.location.origin)}`,
++      "netquor-connect",
++      "popup,width=520,height=700",
++    );
++    if (popup == null) {
++      this.netquorConnectStatus = "The pop-up was blocked: allow pop-ups for this site and try again.";
++      return;
++    }
++    this.netquorConnectStatus = "Waiting for the pop-up...";
++    const stop = () => {
++      window.removeEventListener("message", onMessage);
++      clearInterval(timer);
++    };
++    const onMessage = (event: MessageEvent) => {
++      const data = event.data;
++      if (event.origin !== base || event.source !== popup || data?.type !== "netquor-alias-token") {
++        return;
++      }
++      if (typeof data.token !== "string" || data.token === "") {
++        return;
++      }
++      stop();
++      const values: Record<string, string> = { [Controls.token]: data.token, [Controls.baseUrl]: base };
++      if (typeof data.domain === "string" && data.domain !== "") {
++        values[Controls.domain] = data.domain;
++      }
++      this.settings.patchValue(values);
++      this.save("netquor-connect");
++      this.netquorConnectStatus = "Connected: your key is saved.";
++    };
++    const timer = setInterval(() => {
++      if (popup.closed) {
++        stop();
++        if (this.netquorConnectStatus === "Waiting for the pop-up...") {
++          this.netquorConnectStatus = "";
++        }
++      }
++    }, 500);
++    window.addEventListener("message", onMessage);
++  }
++
+   protected displayDomain: boolean = false;
+   protected displayToken: boolean = false;
+   protected displayBaseUrl: boolean = false;
