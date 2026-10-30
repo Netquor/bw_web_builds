@@ -1,18 +1,31 @@
-diff --git a/libs/tools/generator/core/src/integration/addy-io.ts b/libs/tools/generator/core/src/integration/addy-io.ts
-index bd1be0e..d38a148 100644
---- a/libs/tools/generator/core/src/integration/addy-io.ts
-+++ b/libs/tools/generator/core/src/integration/addy-io.ts
-@@ -26,10 +26,11 @@ export type AddyIoOptions = SelfHostedApiOptions & EmailDomainOptions;
- export type AddyIoConfiguration = ForwarderConfiguration<AddyIoSettings>;
+diff --git a/libs/tools/generator/core/src/metadata/email/forwarder.ts b/libs/tools/generator/core/src/metadata/email/forwarder.ts
+index 1066f89..487d74a 100644
+--- a/libs/tools/generator/core/src/metadata/email/forwarder.ts
++++ b/libs/tools/generator/core/src/metadata/email/forwarder.ts
+@@ -1,4 +1,5 @@
+ import { ExtensionMetadata, ExtensionStorageKey } from "@bitwarden/common/tools/extension/type";
++import { Vendor } from "@bitwarden/common/tools/extension/vendor/data";
+ import { IdentityConstraint } from "@bitwarden/common/tools/state/identity-state-constraint";
  
- // default values
-+// Netquor: preselect our own addy.io instance and domain; the API token stays empty (each person's own)
- const defaultSettings = Object.freeze({
-   token: "",
--  domain: "",
--  baseUrl: "",
-+  domain: "nqvia.com",
-+  baseUrl: "https://alias.netquor.com",
- });
+ import { getForwarderConfiguration } from "../../data";
+@@ -21,6 +22,12 @@ export function toForwarderMetadata(
  
- // supported RPC calls
+   const name = { literal: extension.product.name ?? extension.product.vendor.name };
+ 
++  // Netquor: Addy.io starts on our own instance and domain; the key stays empty (each person's own). Every other forwarder keeps its blank defaults.
++  const netquorInitial =
++    extension.product.vendor.id === Vendor.addyio
++      ? { baseUrl: "https://alias.netquor.com", domain: "nqvia.com" }
++      : {};
++
+   const generator: GeneratorMetadata<ForwarderOptions> = {
+     id: { forwarder: extension.product.vendor.id },
+     type: Type.email,
+@@ -56,6 +63,7 @@ export function toForwarderMetadata(
+             baseUrl: "",
+             domain: "",
+             prefix: "",
++            ...netquorInitial,
+           },
+           options: {
+             deserializer: (value) => value,

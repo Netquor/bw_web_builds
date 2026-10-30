@@ -1,3 +1,4 @@
 # Source files (in vaultwarden/vw_web_builds, i.e. Bitwarden's clients with Vaultwarden's changes) that our patches touch. If one of them changes upstream the watcher says so and checks that our patches still apply.
-libs/tools/generator/core/src/integration/addy-io.ts
-libs/common/src/tools/extension/vendor/addyio.ts
+libs/tools/generator/core/src/metadata/email/forwarder.ts
+libs/tools/generator/components/src/forwarder-settings.component.html
+libs/tools/generator/components/src/forwarder-settings.component.ts
