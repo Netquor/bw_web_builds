@@ -41,7 +41,8 @@ step "building (npm run dist:oss:selfhost)"
 npm run dist:oss:selfhost
 printf '{"version":"netquor-local-%s"}' "$(git -C "${ROOT}" rev-parse --short HEAD)" > build/vw-version.json
 
-rm -rf "${WORK}/web-vault" && cp -R build "${WORK}/web-vault"
+# update the folder IN PLACE: deleting and recreating it leaves a Docker bind mount pointing at the deleted original (the test server then serves an empty folder)
+mkdir -p "${WORK}/web-vault" && rsync -a --delete build/ "${WORK}/web-vault/"
 tar -czf "${WORK}/bw_web_vault.tar.gz" -C "${WORK}" web-vault
 step "done: ${WORK}/web-vault ($(du -sh "${WORK}/web-vault" | cut -f1)), sha256 $(shasum -a 256 "${WORK}/bw_web_vault.tar.gz" | cut -c1-16)..."
 if grep -rlF 'https://alias.netquor.com' "${WORK}/web-vault/app" >/dev/null; then step "proof: the Netquor defaults are in the build"; else echo "ERROR: the build does not contain https://alias.netquor.com"; exit 1; fi
