@@ -1,0 +1,78 @@
+diff --git a/apps/web/src/app/netquor-alias-key.ts b/apps/web/src/app/netquor-alias-key.ts
+--- a/apps/web/src/app/netquor-alias-key.ts
++++ b/apps/web/src/app/netquor-alias-key.ts
+@@ -1,6 +1,8 @@
+-// Netquor (netquor-patches/0004): set up the person's addy.io key in the background once the vault is unlocked, so it is already there when they first open the generator.
+-// Same call as the generator's own silent attempt (patch 0003): a same-site request to our key service with the person's existing alias.netquor.com sign-in cookie. Every failure is
+-// swallowed: no session yet, offline, the generator module not available here... then nothing happens and the generator's own attempt and its "Get my key" button still work.
++// Netquor (netquor-patches/0004, 0005): set up the person's addy.io key in the background once the vault is unlocked, so it is already there when they first open the generator.
++// First the same call as the generator's own silent attempt (patch 0003): a same-site request to our key service with the person's existing alias.netquor.com sign-in cookie. A person
++// who has never opened alias.netquor.com has no such cookie, so (0005) the second try sends their Vaultwarden session instead, as a Bearer token and WITHOUT cookies, to one fixed
++// address; the key service asks Vaultwarden whose session it is and Authentik whether that person may have a key (addyio/connect/connect.py), uses the token for that question only and
++// never stores or logs it. It is only sent while the person's key is empty. Every failure is swallowed: no session yet, offline, the generator module not available here... then nothing happens and the generator's own attempt and its "Get my key" button still work.
+ import {
+   EnvironmentInjector,
+   Injector,
+@@ -10,14 +12,43 @@
+ import { filter, firstValueFrom, of, timeout } from "rxjs";
+ 
+ import { AccountService } from "@bitwarden/common/auth/abstractions/account.service";
++import { TokenService } from "@bitwarden/common/auth/abstractions/token.service";
+ import { Vendor } from "@bitwarden/common/tools/extension/vendor/data";
+ import { GeneratorServicesModule } from "@bitwarden/generator-components";
+ import { CredentialGeneratorService } from "@bitwarden/generator-core";
++import { UserId } from "@bitwarden/common/types/guid";
+ 
+ const BASE = "https://alias.netquor.com";
+ /** shared with the generator's own attempt, so the two never both fetch (a second key would revoke the first) */
+ const TRIED = "netquorAutoKeyTry";
+ 
++/** One POST to the key service; null for any failure (no cookie and no session end in a redirect or a refusal, which is the normal case for the first try) */
++async function fetchKey(
++  url: string,
++  credentials: RequestCredentials,
++  extra: Record<string, string>,
++): Promise<{ token?: unknown; domain?: unknown } | null> {
++  try {
++    const response = await fetch(url, {
++      method: "POST",
++      credentials,
++      redirect: "error",
++      cache: "no-store",
++      headers: { "Content-Type": "application/json", "X-Requested-With": "netquor-vault", ...extra },
++      body: JSON.stringify({ label: "web" }),
++    });
++    return response.ok ? await response.json() : null;
++  } catch {
++    return null;
++  }
++}
++
++/** The person's current Vaultwarden session as an Authorization header (empty when there is none, which makes the key service refuse and nothing else happens) */
++async function sessionHeader(parent: Injector, userId: UserId): Promise<Record<string, string>> {
++  const session = await parent.get(TokenService).getAccessToken(userId);
++  return session ? { Authorization: `Bearer ${session}` } : {};
++}
++
+ export async function netquorSetUpAliasKey(parent: Injector): Promise<void> {
+   try {
+     const last = Number(window.sessionStorage.getItem(TRIED) ?? "0");
+@@ -49,15 +80,9 @@
+       }
+ 
+       window.sessionStorage.setItem(TRIED, String(Date.now()));
+-      const response = await fetch(`${BASE}/netquor/key`, {
+-        method: "POST",
+-        credentials: "include",
+-        redirect: "error",
+-        cache: "no-store",
+-        headers: { "Content-Type": "application/json", "X-Requested-With": "netquor-vault" },
+-        body: JSON.stringify({ label: "web" }),
+-      });
+-      const data = response.ok ? await response.json() : null;
++      const data =
++        (await fetchKey(`${BASE}/netquor/key`, "include", {})) ??
++        (await fetchKey(`${BASE}/netquor/key-by-session`, "omit", await sessionHeader(parent, account.id)));
+       if (typeof data?.token !== "string" || data.token === "") {
+         return;
+       }
