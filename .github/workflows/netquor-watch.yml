@@ -1,0 +1,26 @@
+# Netquor: once a day, compare upstream's newest stable web vault and server releases with what we are based on (netquor-patches/BASE). If something is new, open ONE issue with the diff of the
+# files we depend on and whether our patches still apply (scripts/netquor_watch.sh). Nothing is deployed from here.
+name: Netquor upstream watch
+permissions: {}
+
+on:
+  schedule:
+    - cron: "17 5 * * *"
+  workflow_dispatch:
+
+jobs:
+  watch:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      issues: write # open the review issue
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+
+      - name: Compare with upstream
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash scripts/netquor_watch.sh

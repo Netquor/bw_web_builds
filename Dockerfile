@@ -35,6 +35,8 @@ WORKDIR /bw_web_builds
 COPY scripts ./scripts
 # Use a glob pattern here so builds will continue even if the `.build_env` does not exists
 COPY .build_env* ./
+# Netquor patches, applied by scripts/build_web_vault.sh after the checkout
+COPY netquor-patches ./netquor-patches
 
 RUN ./scripts/checkout_web_vault.sh
 RUN ./scripts/build_web_vault.sh

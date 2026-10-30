@@ -1,0 +1,8 @@
+# Vaultwarden server files (dani-garcia/vaultwarden) whose behaviour Netquor depends on. The watcher lists which of them changed between the release we run and the newest one.
+.env.template
+src/config.rs
+src/util.rs
+src/api/web.rs
+src/api/identity.rs
+src/sso.rs
+src/api/core/organizations.rs

@@ -1,0 +1,72 @@
+# Netquor: build the web vault WITH our patches (netquor-patches/), prove the patch is in the result, and on a tag publish it as a release asset.
+#   - on a push to the netquor branch that touches the patches, scripts or Dockerfile: build and keep the tarball as an artifact (a test build)
+#   - on a tag netquor-<web vault tag>-<n> (for example netquor-v2026.7.0-1): build, then attach bw_web_vault.tar.gz and its sha256 to a GitHub release
+name: Netquor web vault build
+permissions: {}
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [netquor]
+    paths:
+      - "netquor-patches/**"
+      - "scripts/**"
+      - "Dockerfile"
+      - ".github/workflows/netquor-build.yml"
+    tags: ["netquor-*"]
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  build:
+    name: Build web-vault with the Netquor patches
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write # create the release on a netquor-* tag
+    env:
+      BUILDKIT_PROGRESS: plain
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+
+      - name: Build and extract
+        run: make docker-extract
+
+      - name: Checksum
+        id: sum
+        run: |
+          sha=$(sha256sum container_builds/bw_web_vault.tar.gz | cut -d' ' -f1)
+          echo "sha256: ${sha}"
+          echo "sha=${sha}" >> "$GITHUB_OUTPUT"
+
+      - name: Prove the Netquor patch is in the build
+        run: |
+          mkdir -p /tmp/check && tar -xzf container_builds/bw_web_vault.tar.gz -C /tmp/check
+          if grep -rlF 'https://alias.netquor.com' /tmp/check/web-vault/app >/tmp/patched-files; then
+            echo "patched chunk(s):"; cat /tmp/patched-files
+          else
+            echo "::error::the build does not contain https://alias.netquor.com: the patch did not make it in"; exit 1
+          fi
+
+      - name: Upload web-vault artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: web-vault-netquor
+          compression-level: 0
+          path: container_builds/bw_web_vault.tar.gz
+
+      - name: Publish the release (tags only)
+        if: startsWith(github.ref, 'refs/tags/netquor-')
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHA: ${{ steps.sum.outputs.sha }}
+        run: |
+          base=$(. netquor-patches/BASE && echo "${WEB_VAULT_TAG}")
+          gh release create "${GITHUB_REF_NAME}" container_builds/bw_web_vault.tar.gz \
+            --repo "${GITHUB_REPOSITORY}" \
+            --title "Netquor web vault ${GITHUB_REF_NAME}" \
+            --notes "Vaultwarden web vault ${base} with the patches in netquor-patches/ (see NETQUOR.md). sha256 of bw_web_vault.tar.gz: ${SHA}"

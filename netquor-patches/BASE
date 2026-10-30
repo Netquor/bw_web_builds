@@ -1,0 +1,5 @@
+# What the Netquor web vault is based on and what was last reviewed (read by scripts/netquor_watch.sh). Bump these only after reading the watcher's report and deploying.
+WEB_VAULT_TAG=v2026.7.0
+WEB_VAULT_COMMIT=d2a095eb800fe80a9bc524579b974796eae51994
+SERVER_TAG=1.37.4
+REVIEWED=2026-10-30

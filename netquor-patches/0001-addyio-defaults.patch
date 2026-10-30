@@ -1,0 +1,18 @@
+diff --git a/libs/tools/generator/core/src/integration/addy-io.ts b/libs/tools/generator/core/src/integration/addy-io.ts
+index bd1be0e..d38a148 100644
+--- a/libs/tools/generator/core/src/integration/addy-io.ts
++++ b/libs/tools/generator/core/src/integration/addy-io.ts
+@@ -26,10 +26,11 @@ export type AddyIoOptions = SelfHostedApiOptions & EmailDomainOptions;
+ export type AddyIoConfiguration = ForwarderConfiguration<AddyIoSettings>;
+ 
+ // default values
++// Netquor: preselect our own addy.io instance and domain; the API token stays empty (each person's own)
+ const defaultSettings = Object.freeze({
+   token: "",
+-  domain: "",
+-  baseUrl: "",
++  domain: "nqvia.com",
++  baseUrl: "https://alias.netquor.com",
+ });
+ 
+ // supported RPC calls

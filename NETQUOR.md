@@ -1,0 +1,39 @@
+# Netquor changes to the Vaultwarden web vault builder
+
+This is Netquor's fork of [`dani-garcia/bw_web_builds`](https://github.com/dani-garcia/bw_web_builds), the scripts that build the Bitwarden web vault for Vaultwarden. **Everything Netquor added is on the `netquor` branch** (the fork's default branch) and is listed here; `master` is kept identical to upstream. Written 2026-10-30. Internal notes and the reasons: `docs/vaultwarden-fork-plan.md` in the QUOR repository.
+
+## What differs from upstream
+
+| Path | What | Why |
+| --- | --- | --- |
+| `netquor-patches/0001-addyio-defaults.patch` | The Addy.io forwarder starts with domain `nqvia.com` and self-host URL `https://alias.netquor.com` (upstream: both empty, i.e. app.addy.io). The API token stays empty: it is each person's own. | Staff use our own addy.io; this saves them two of the three fields. Web vault only: the extension and mobile apps are Bitwarden's and cannot be changed. |
+| `scripts/apply_netquor_patches.sh` (new) | Applies `netquor-patches/*.patch` to the checked-out sources, in name order, and fails the build if one does not apply. | We never ship a half-patched web vault. |
+| `scripts/build_web_vault.sh` (+3 lines) | Calls the script above after the checkout and before `npm ci`. | |
+| `Dockerfile` (+2 lines) | `COPY netquor-patches` into the build. | |
+| `netquor-patches/BASE`, `WATCHED.txt`, `SERVER_WATCHED.txt` | The upstream release we are based on, and the source files we depend on. | Read by the watcher. |
+| `scripts/netquor_watch.sh`, `.github/workflows/netquor-watch.yml` | Daily: compares our base with the newest upstream web vault and Vaultwarden server releases, lists which watched files changed, checks our patches still apply to the new sources, and opens **one issue** per new release. | "See what changed, then act." Nothing is deployed from it. |
+| `.github/workflows/netquor-build.yml` | Builds with the patches, proves the patch is in the output, and on a tag `netquor-*` publishes the tarball and its sha256 as a GitHub release. | |
+
+The upstream files `ci.yml`, `hadolint.yml` and `release.yml` are untouched.
+
+## Our base
+
+`netquor-patches/BASE`: web vault **v2026.7.0** (the version bundled with the Vaultwarden server we run, 1.37.4: we do not run a web vault newer than the server's own).
+
+## Building and releasing
+
+1. Push to `netquor` (or run "Netquor web vault build" by hand): a test build, kept as an artifact.
+2. Tag `netquor-<web vault tag>-<n>`, for example `netquor-v2026.7.0-1`: the build is attached to a release with its sha256.
+3. Deploy: unpack `bw_web_vault.tar.gz` on the Vaultwarden host, mount the `web-vault` folder into the container and set `WEB_VAULT_FOLDER` to it (`directory/vaultwarden/compose.yaml` in the QUOR repository). **Rollback**: remove the mount and the setting, and the stock web vault inside the image is served again.
+
+## Moving to a new upstream release
+
+The watcher's issue tells you what changed. Then: merge upstream's tag into `netquor` (`git fetch upstream --tags && git merge v<new>`), rewrite any patch that no longer applies (patches are made with `git diff` against the Bitwarden clients commit pinned in the `Dockerfile`), update `netquor-patches/BASE`, build, test on the staging container, tag, deploy, close the issue.
+
+## Adding a patch
+
+Check out the pinned commit of `vaultwarden/vw_web_builds` (the `VAULT_VERSION` in the `Dockerfile`), change the files, `git diff > netquor-patches/000N-what-it-does.patch`, add the touched paths to `netquor-patches/WATCHED.txt`, put a line in the table above saying what and why, build.
+
+## Licence
+
+Upstream is GPL-3.0; our changes are published here under the same licence. The Vaultwarden server (AGPL-3.0) is not modified by us.

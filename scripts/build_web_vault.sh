@@ -13,6 +13,9 @@ trap 'handle_error $LINENO $?' ERR
 # shellcheck source=.script_env
 . "${BASEDIR}/.script_env"
 
+# Netquor: apply our patches to the checked-out sources (see netquor-patches/)
+"${BASEDIR}/apply_netquor_patches.sh"
+
 # Show used versions
 node --version
 npm --version
