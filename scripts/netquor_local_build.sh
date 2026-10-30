@@ -26,6 +26,8 @@ export VAULT_VERSION
 if [ "${MODE}" = "--rebuild" ] && [ -d "${VAULT_FOLDER}/.git" ]; then
     step "rebuild: resetting the sources, keeping node_modules"
     git -C "${VAULT_FOLDER}" reset --hard -q
+    # a reset keeps files that a patch CREATED (patch 0004 adds one), which would make applying that patch again fail: remove them (ignored files such as node_modules stay)
+    git -C "${VAULT_FOLDER}" clean -fdq
 else
     step "checking out ${VAULT_VERSION}"
     (cd "${ROOT}" && bash scripts/checkout_web_vault.sh) >/dev/null

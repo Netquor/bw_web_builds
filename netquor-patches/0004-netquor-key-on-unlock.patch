@@ -1,0 +1,129 @@
+diff --git a/apps/web/src/app/app.component.ts b/apps/web/src/app/app.component.ts
+index 5c4af86..8303f61 100644
+--- a/apps/web/src/app/app.component.ts
++++ b/apps/web/src/app/app.component.ts
+@@ -1,6 +1,6 @@
+ // FIXME: Update this file to be type safe and remove this and next line
+ // @ts-strict-ignore
+-import { Component, DestroyRef, NgZone, OnDestroy, OnInit } from "@angular/core";
++import { Component, DestroyRef, Injector, NgZone, OnDestroy, OnInit, inject } from "@angular/core";
+ import { takeUntilDestroyed } from "@angular/core/rxjs-interop";
+ import { Router } from "@angular/router";
+ import { Subject, filter, firstValueFrom, map, timeout } from "rxjs";
+@@ -45,6 +45,9 @@ export class AppComponent implements OnDestroy, OnInit {
+ 
+   loading = false;
+ 
++  /** Netquor (0004): lets the unlock hook below reach the app's services without a new constructor parameter */
++  private readonly netquorInjector = inject(Injector);
++
+   constructor(
+     private broadcasterService: BroadcasterService,
+     private folderService: InternalFolderService,
+@@ -84,6 +87,19 @@ export class AppComponent implements OnDestroy, OnInit {
+   }
+ 
+   ngOnInit() {
++    // Netquor (netquor-patches/0004): once the vault is unlocked, set up the person's addy.io key in the background. It never throws and never waits for anything: a failure of any kind
++    // (including the file not loading) leaves the app exactly as it was.
++    this.authService.activeAccountStatus$
++      .pipe(
++        filter((status) => status === AuthenticationStatus.Unlocked),
++        takeUntilDestroyed(this.destroy),
++      )
++      .subscribe(() => {
++        void import("./netquor-alias-key")
++          .then((m) => m.netquorSetUpAliasKey(this.netquorInjector))
++          .catch((): void => undefined);
++      });
++
+     this.ngZone.runOutsideAngular(() => {
+       window.onmousemove = () => this.recordActivity();
+       window.onmousedown = () => this.recordActivity();
+diff --git a/apps/web/src/app/netquor-alias-key.ts b/apps/web/src/app/netquor-alias-key.ts
+new file mode 100644
+index 0000000..7ec5558
+--- /dev/null
++++ b/apps/web/src/app/netquor-alias-key.ts
+@@ -0,0 +1,81 @@
++// Netquor (netquor-patches/0004): set up the person's addy.io key in the background once the vault is unlocked, so it is already there when they first open the generator.
++// Same call as the generator's own silent attempt (patch 0003): a same-site request to our key service with the person's existing alias.netquor.com sign-in cookie. Every failure is
++// swallowed: no session yet, offline, the generator module not available here... then nothing happens and the generator's own attempt and its "Get my key" button still work.
++import {
++  EnvironmentInjector,
++  Injector,
++  createEnvironmentInjector,
++  importProvidersFrom,
++} from "@angular/core";
++import { filter, firstValueFrom, of, timeout } from "rxjs";
++
++import { AccountService } from "@bitwarden/common/auth/abstractions/account.service";
++import { Vendor } from "@bitwarden/common/tools/extension/vendor/data";
++import { GeneratorServicesModule } from "@bitwarden/generator-components";
++import { CredentialGeneratorService } from "@bitwarden/generator-core";
++
++const BASE = "https://alias.netquor.com";
++/** shared with the generator's own attempt, so the two never both fetch (a second key would revoke the first) */
++const TRIED = "netquorAutoKeyTry";
++
++export async function netquorSetUpAliasKey(parent: Injector): Promise<void> {
++  try {
++    const last = Number(window.sessionStorage.getItem(TRIED) ?? "0");
++    if (Date.now() - last < 10 * 60 * 1000) {
++      return;
++    }
++
++    const account = await firstValueFrom(parent.get(AccountService).activeAccount$);
++    if (account == null) {
++      return;
++    }
++
++    // The generator service is only provided inside the generator's own module: build those providers in a private injector on top of the app's, so nothing else is affected.
++    const environment = createEnvironmentInjector(
++      [importProvidersFrom(GeneratorServicesModule)],
++      parent.get(EnvironmentInjector),
++    );
++    const generator = environment.get(CredentialGeneratorService);
++    const settings = generator.settings(generator.forwarder(Vendor.addyio), {
++      account$: of(account),
++    });
++
++    try {
++      const current = await firstValueFrom(settings);
++      // only an empty key, and only on our own server (or on none yet)
++      const url = String(current.baseUrl ?? "").replace(/\/+$/, "");
++      if (current.token || (url !== "" && url !== BASE)) {
++        return;
++      }
++
++      window.sessionStorage.setItem(TRIED, String(Date.now()));
++      const response = await fetch(`${BASE}/netquor/key`, {
++        method: "POST",
++        credentials: "include",
++        redirect: "error",
++        cache: "no-store",
++        headers: { "Content-Type": "application/json", "X-Requested-With": "netquor-vault" },
++        body: JSON.stringify({ label: "web" }),
++      });
++      const data = response.ok ? await response.json() : null;
++      if (typeof data?.token !== "string" || data.token === "") {
++        return;
++      }
++
++      const domain =
++        typeof data.domain === "string" && data.domain !== "" ? data.domain : current.domain;
++      settings.next({ ...current, token: data.token, baseUrl: BASE, domain });
++      // let go of the subject only after the new key has been saved
++      await firstValueFrom(
++        settings.pipe(
++          filter((saved) => saved.token === data.token),
++          timeout(5000),
++        ),
++      );
++    } finally {
++      settings.complete();
++    }
++  } catch {
++    // intentionally silent
++  }
++}
